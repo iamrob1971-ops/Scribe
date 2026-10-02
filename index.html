@@ -22,9 +22,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15p
 button,input,select,textarea{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--violet);outline-offset:2px}
 .shell{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr);gap:20px;align-items:start}
-.shell.wide{grid-template-columns:minmax(0,1fr)}
-.shell.wide .scribe{display:none}
-.shell.wide .out{max-width:84ch;max-height:none}
 header.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:2px 4px 0;flex-wrap:wrap}
 .brand{font-family:var(--serif);font-size:24px;font-weight:500;letter-spacing:-.01em}
 .brand small{font-family:var(--sans);font-size:13px;color:var(--muted);margin-left:10px;font-weight:400}
@@ -110,7 +107,23 @@ textarea.page::placeholder{color:#A9A5BD;font-family:var(--sans);font-size:15px;
 .menu-list button:hover{background:var(--violet-t)}
 .menu-list span{display:block;font-size:12px;color:var(--muted)}
 
-.notes{display:flex;flex-direction:column;min-height:calc(100vh - 100px)}
+/* NOTES CARD & OVERLAY */
+.notes{display:flex;flex-direction:column;min-height:calc(100vh - 100px);transition:all .2s ease}
+.notes.overlay-mode{
+  position:fixed;
+  inset:16px;
+  z-index:100;
+  max-height:calc(100vh - 32px);
+  min-height:calc(100vh - 32px);
+  box-shadow:0 16px 48px rgba(29,25,48,.32);
+}
+.notes.overlay-mode .out{
+  max-height:none;
+  font-size:18px;
+  max-width:880px;
+  margin:0 auto;
+  width:100%;
+}
 .notes-head{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .notes-head h2{margin:0;font-family:var(--serif);font-size:21px;font-weight:500}
 .styleRow{display:flex;gap:8px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line)}
@@ -126,10 +139,25 @@ details.cfg summary{cursor:pointer;padding:12px 0;font-size:13px;color:var(--mut
 .cfg .result{font-size:12px;color:var(--muted);line-height:1.5;word-break:break-word}
 .cfg .result b{color:var(--ink);font-weight:500}
 .cfg .result.bad{color:#8E2236}
-.out{flex:1;padding:20px 22px;overflow-y:auto;max-height:calc(100vh - 430px);min-height:240px;font-family:var(--serif);font-size:17px;line-height:1.6}
+
+/* EDITABLE NOTES AREA */
+.out{
+  flex:1;
+  padding:20px 22px;
+  overflow-y:auto;
+  max-height:calc(100vh - 430px);
+  min-height:240px;
+  font-family:var(--serif);
+  font-size:17px;
+  line-height:1.6;
+  outline:none;
+}
+.out[contenteditable="true"]{
+  cursor:text;
+}
 .out h3{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--violet);margin:1.4em 0 .4em}
 .out h3:first-child{margin-top:0}
-.out ul,.out ol{margin:0;padding-left:1.2em}
+.out ul,.out ol{margin:0 0 1em;padding-left:1.2em}
 .out li{margin:.3em 0}
 .out p{margin:.4em 0 1em}
 .out blockquote{margin:.6em 0;padding:.1em 0 .1em 14px;border-left:3px solid var(--line);color:#4A4560}
@@ -150,7 +178,7 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
 .dlg-f{display:flex;gap:10px;align-items:center;padding:14px 20px;border-top:1px solid var(--line);flex-wrap:wrap}
 .count{font-size:12px;color:var(--muted)}
 
-.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:99}
+.toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);background:var(--ink);color:#fff;padding:10px 16px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:.2s;z-index:999}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
 @media (max-width:900px){
@@ -220,11 +248,11 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
   </section>
 
   <!-- NOTES -->
-  <aside class="card notes" aria-label="Notes">
+  <aside class="card notes" id="notesCard" aria-label="Notes">
     <div class="notes-head">
       <h2 id="notesTitle">Study notes</h2>
       <div style="display:flex;gap:8px">
-        <button class="btn sm" id="wideBtn" title="Hide the transcript and read the notes full width">Focus notes</button>
+        <button class="btn sm" id="expandBtn" title="Expand notes to full screen">⛶ Expand</button>
         <button class="btn primary" id="sumBtn" disabled>Summarize here</button>
       </div>
     </div>
@@ -255,7 +283,7 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
         <p class="hint" id="hint"></p>
       </div>
     </details>
-    <div class="out" id="out"></div>
+    <div class="out" id="out" spellcheck="true"></div>
     <div class="actions">
       <button class="btn" id="copyNotes" disabled>Copy notes</button>
     </div>
@@ -373,7 +401,7 @@ var MODES = {
     brand:'Sermon Scribe', sub:'Live transcript and study notes', titlePh:'Name this message',
     ribbonLbl:'Scripture heard', ribbonEmpty:'References appear here as the speaker names them.',
     pagePh:'Press the microphone to record live, or click here to type or paste an existing sermon transcript...',
-    notesTitle:'Study notes', notesEmpty:'Notes appear here once you press Summarize. Choose a notes style above, or edit the instructions to suit.',
+    notesTitle:'Study notes', notesEmpty:'Notes appear here once you press Summarize. You can edit them freely and copy your changes.',
     fileBase:'sermon', defaultPreset:'sermon-quick', sampleTitle:'Sample message',
     sample:'Good morning. Open your Bible with me to John 3:16. We know this verse so well that we can recite it without feeling it. God so loved the world, not the polished version of the world, but the actual one, with all its noise and brokenness.\n\nNow hold that thought and turn to Romans 8:28. Paul does not say that everything is good. He says that God works in all things for the good of those who love him. That is a promise about direction, not about comfort.\n\nAnd finally, Psalm 23. The valley is real, but notice the shepherd walks through it with you. This week, name one valley you are in and say it out loud to someone you trust.'
   },
@@ -381,7 +409,7 @@ var MODES = {
     brand:'Meeting Scribe', sub:'Live transcript and meeting notes', titlePh:'Name this meeting',
     ribbonLbl:'Possible actions', ribbonEmpty:'Sentences that sound like tasks or follow-ups appear here.',
     pagePh:'Press the microphone to record live, or click here to type or paste meeting minutes / notes...',
-    notesTitle:'Meeting notes', notesEmpty:'Notes appear here once you press Summarize. Choose a notes style above, or edit the instructions to suit.',
+    notesTitle:'Meeting notes', notesEmpty:'Notes appear here once you press Summarize. You can edit them freely and copy your changes.',
     fileBase:'meeting', defaultPreset:'meeting-minutes', sampleTitle:'Go-live check-in',
     sample:'Okay, let us get started. Quick update on the go-live: the receiving module passed testing, but we still need to finish the label printer setup. Priya, can you confirm the printer models by Thursday? We decided to keep the original go-live date of the fifteenth.\n\nMarcus will follow up with the carrier about the delayed pallets. One open question is whether night shift gets trained before launch. Let us revisit that next Tuesday. Also, we need to send the updated runbook to the site leads by end of week.'
   }
@@ -390,9 +418,9 @@ var MODES = {
 /* ===================================================================== */
 (function(){
   var $ = function(id){return document.getElementById(id)};
-  var recBtn=$('recBtn'), page=$('page'), scribe=$('scribe'), interimBox=$('interimBox');
+  var recBtn=$('recBtn'), page=$('page'), scribe=$('scribe'), interimBox=$('interimBox'), out=$('out');
   var interim='', wantListening=false, recognition=null, lastResultAt=0;
-  var seconds=0, tick=null, notesMd='', wakeLock=null, mode='sermon', presetId='sermon-quick', running=false, restartT=null;
+  var seconds=0, tick=null, wakeLock=null, mode='sermon', presetId='sermon-quick', running=false, restartT=null;
 
   function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove('show')},2600)}
   function esc(s){return s.replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
@@ -429,7 +457,7 @@ var MODES = {
     var saved=load('ss_preset_'+m);
     presetId=(saved&&PRESETS[saved]&&(PRESETS[saved].mode===m||PRESETS[saved].mode==='any'))?saved:c.defaultPreset;
     fillPresets();
-    if(!notesMd)$('out').innerHTML='<div class="placeholder">'+esc(c.notesEmpty)+'</div>';
+    if(!out.getAttribute('data-has-notes'))out.innerHTML='<div class="placeholder">'+esc(c.notesEmpty)+'</div>';
     store('ss_mode',m);
     updateUI();
   }
@@ -442,18 +470,18 @@ var MODES = {
   var books='Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|1 Samuel|2 Samuel|1 Kings|2 Kings|1 Chronicles|2 Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|1 Corinthians|2 Corinthians|Galatians|Ephesians|Philippians|Colossians|1 Thessalonians|2 Thessalonians|1 Timothy|2 Timothy|Titus|Philemon|Hebrews|James|1 Peter|2 Peter|1 John|2 John|3 John|Jude|Revelation';
   var refRe=new RegExp('\\b(?:'+books+')\\s\\d{1,3}(?:\\s?[:.]\\s?\\d{1,3}(?:\\s?[-–]\\s?\\d{1,3})?)?','gi');
   function findRefs(text){
-    var seen={},out=[],m;refRe.lastIndex=0;
+    var seen={},outArr=[],m;refRe.lastIndex=0;
     while((m=refRe.exec(text))){
       var r=m[0].replace(/\s+/g,' ').replace(/\s?[:.]\s?/,':').trim().replace(/^./,function(c){return c.toUpperCase()});
-      if(!seen[r.toLowerCase()]){seen[r.toLowerCase()]=1;out.push(r)}
+      if(!seen[r.toLowerCase()]){seen[r.toLowerCase()]=1;outArr.push(r)}
     }
-    return out;
+    return outArr;
   }
   var actRe=/\b(action item|follow up|follow-up|next step|deadline|due (?:by|on|date)|i'll|i will|we will|we need to|needs to|need to|can you|could you|please send|assigned to|will own|by (?:monday|tuesday|wednesday|thursday|friday|end of (?:day|week|month)))\b/i;
   function findActions(text){
-    var parts=text.replace(/\n+/g,' ').split(/(?<=[.!?])\s+/),out=[],seen={};
-    parts.forEach(function(s){s=s.trim();if(s.length>12&&actRe.test(s)&&!seen[s]){seen[s]=1;out.push(s)}});
-    return out.slice(-8);
+    var parts=text.replace(/\n+/g,' ').split(/(?<=[.!?])\s+/),outArr=[],seen={};
+    parts.forEach(function(s){s=s.trim();if(s.length>12&&actRe.test(s)&&!seen[s]){seen[s]=1;outArr.push(s)}});
+    return outArr.slice(-8);
   }
   function renderRibbon(){
     var c=MODES[mode],ribbon=$('ribbon');
@@ -485,6 +513,20 @@ var MODES = {
     $('title').value=$('title').value||MODES[mode].sampleTitle;
     setStatus('Sample loaded',false);
     updateUI();
+  });
+
+  /* Expand / Fullscreen overlay toggle */
+  var notesCard=$('notesCard'), expandBtn=$('expandBtn');
+  expandBtn.addEventListener('click',function(){
+    var isMax = notesCard.classList.toggle('overlay-mode');
+    expandBtn.textContent = isMax ? '🗗 Minimize' : '⛶ Expand';
+    expandBtn.title = isMax ? 'Return to split layout (Esc)' : 'Expand notes to full screen';
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key==='Escape' && notesCard.classList.contains('overlay-mode')){
+      notesCard.classList.remove('overlay-mode');
+      expandBtn.textContent = '⛶ Expand';
+    }
   });
 
   /* Speech recognition */
@@ -575,9 +617,11 @@ var MODES = {
   $('copyBtn').addEventListener('click',function(){copy(page.value).then(function(){toast('Transcript copied')},function(){toast('Copy failed')})});
   $('clearBtn').addEventListener('click',function(){
     if(!confirm('Clear the transcript and notes?'))return;
-    page.value='';interim='';seconds=0;lastResultAt=0;$('timer').textContent='0:00';notesMd='';
+    page.value='';interim='';seconds=0;lastResultAt=0;$('timer').textContent='0:00';
+    out.removeAttribute('data-has-notes');
+    out.removeAttribute('contenteditable');
+    out.innerHTML='<div class="placeholder">'+esc(MODES[mode].notesEmpty)+'</div>';
     interimBox.style.display='none';
-    $('out').innerHTML='<div class="placeholder">'+esc(MODES[mode].notesEmpty)+'</div>';
     $('copyNotes').disabled=true;setStatus(wantListening?'Listening live':'Ready',wantListening);
     updateUI();
   });
@@ -586,7 +630,6 @@ var MODES = {
     var b=new Blob([page.value],{type:'text/plain'}),a=document.createElement('a');
     a.href=URL.createObjectURL(b);a.download=t+'.txt';document.body.appendChild(a);a.click();document.body.removeChild(a);
   });
-  $('wideBtn').addEventListener('click',function(){var w=$('shell').classList.toggle('wide');$('wideBtn').textContent=w?'Show transcript':'Focus notes'});
 
   function userMessage(){var t=$('title').value;return (t?'Title: '+t+'\n\n':'')+'Transcript:\n'+page.value}
   function combinedPrompt(){return getInstr()+'\n\n'+userMessage()}
@@ -643,6 +686,18 @@ var MODES = {
     else if(list.length){sel.value=list[0]}
   }
 
+  function autoSaveKey(){
+    var p=$('prov').value;
+    var k=$('key').value.trim();
+    if($('remember').checked && k){
+      store('ss_key_'+p, k);
+    } else {
+      store('ss_key_'+p, null);
+    }
+  }
+  $('key').addEventListener('input', autoSaveKey);
+  $('remember').addEventListener('change', autoSaveKey);
+
   function applyProvider(){
     var p=$('prov').value;
     var savedModel=load('ss_model_'+p);
@@ -669,9 +724,10 @@ var MODES = {
   }
 
   $('checkKey').addEventListener('click',async function(){
-    var p=$('prov').value,key=$('key').value.trim(),out=$('checkOut');
-    if(!key){out.className='result bad';out.textContent='Paste your key first.';return}
-    out.className='result';out.textContent='Checking...';
+    var p=$('prov').value,key=$('key').value.trim(),outDiv=$('checkOut');
+    if(!key){outDiv.className='result bad';outDiv.textContent='Paste your key first.';return}
+    autoSaveKey();
+    outDiv.className='result';outDiv.textContent='Checking...';
     try{
       var names=[];
       if(p==='gemini'){
@@ -687,9 +743,9 @@ var MODES = {
       }
       populateModelDropdown(names,$('model').value);
       store('ss_model_'+p,$('model').value);
-      out.className='result';
-      out.innerHTML='<b>Key verified.</b> '+names.length+' text models available in dropdown.';
-    }catch(e){out.className='result bad';out.textContent=e.message||'Could not reach the service.'}
+      outDiv.className='result';
+      outDiv.innerHTML='<b>Key verified &amp; saved.</b> '+names.length+' text models available in dropdown.';
+    }catch(e){outDiv.className='result bad';outDiv.textContent=e.message||'Could not reach the service.'}
   });
 
   function mdToHtml(md){
@@ -747,15 +803,30 @@ var MODES = {
   }
 
   $('sumBtn').addEventListener('click',async function(){
-    var out=$('out'),btn=$('sumBtn'),p=$('prov').value;
-    if($('remember').checked&&$('key').value.trim())store('ss_key_'+p,$('key').value.trim());else store('ss_key_'+p,null);
+    var btn=$('sumBtn');
+    autoSaveKey();
     btn.disabled=true;$('copyNotes').disabled=true;
+    out.removeAttribute('contenteditable');
     out.innerHTML='<div class="loading"><span class="spin"></span>Generating notes... Long analysis may take up to a minute.</div>';
-    try{notesMd=await callAI();out.innerHTML=mdToHtml(notesMd);$('copyNotes').disabled=false}
-    catch(e){if(!$('key').value.trim())$('cfg').open=true;out.innerHTML='<div class="err">'+esc(e.message||'Something went wrong.')+'</div>'}
+    try{
+      var rawNotes=await callAI();
+      out.innerHTML=mdToHtml(rawNotes);
+      out.setAttribute('contenteditable','true');
+      out.setAttribute('data-has-notes','true');
+      $('copyNotes').disabled=false;
+      toast('Notes generated. You can click inside to edit.');
+    }catch(e){
+      if(!$('key').value.trim())$('cfg').open=true;
+      out.removeAttribute('data-has-notes');
+      out.innerHTML='<div class="err">'+esc(e.message||'Something went wrong.')+'</div>';
+    }
     btn.disabled=false;
   });
-  $('copyNotes').addEventListener('click',function(){copy(notesMd).then(function(){toast('Notes copied')},function(){toast('Copy failed')})});
+
+  $('copyNotes').addEventListener('click',function(){
+    var textToCopy = out.innerText.trim();
+    copy(textToCopy).then(function(){toast('Notes copied (including your edits)')},function(){toast('Copy failed')});
+  });
 
   window.addEventListener('beforeunload',function(e){if(page.value.length>40){e.preventDefault();e.returnValue=''}});
 
