@@ -66,11 +66,31 @@ header.top{grid-column:1/-1;display:flex;align-items:center;justify-content:spac
 .chip{white-space:nowrap;text-decoration:none;font-family:var(--serif);font-size:15px;color:var(--ink);background:var(--paper);border:1px solid color-mix(in srgb,var(--gold) 35%,white);border-radius:6px;padding:2px 10px}
 a.chip:hover{border-color:var(--gold)}
 
-.page{flex:1;padding:26px 34px;overflow-y:auto;max-height:calc(100vh - 330px);min-height:300px;font-family:var(--serif);font-size:20px;line-height:1.7}
-.page p{margin:0 0 1em;max-width:62ch}
-.page .interim{color:#9A96AE;font-style:italic}
-.placeholder{color:var(--muted);font-family:var(--sans);font-size:15px;max-width:44ch}
-.placeholder button{background:none;border:0;padding:0;color:var(--violet);text-decoration:underline;cursor:pointer}
+.transcript-area{flex:1;display:flex;flex-direction:column;position:relative}
+textarea.page{
+  flex:1;
+  width:100%;
+  padding:26px 34px;
+  border:0;
+  outline:none;
+  background:transparent;
+  resize:none;
+  font-family:var(--serif);
+  font-size:20px;
+  line-height:1.7;
+  color:var(--ink);
+  min-height:300px;
+  max-height:calc(100vh - 350px);
+}
+textarea.page::placeholder{color:#A9A5BD;font-family:var(--sans);font-size:15px;line-height:1.5}
+.interim-preview{
+  padding:4px 34px 10px;
+  color:#9A96AE;
+  font-style:italic;
+  font-family:var(--serif);
+  font-size:18px;
+  display:none;
+}
 .notice{margin:14px 22px 0;padding:10px 14px;border-radius:8px;background:#FDECEF;color:#8E2236;font-size:14px;display:none}
 .notice.show{display:block}
 
@@ -109,7 +129,7 @@ details.cfg summary{cursor:pointer;padding:12px 0;font-size:13px;color:var(--mut
 .out{flex:1;padding:20px 22px;overflow-y:auto;max-height:calc(100vh - 430px);min-height:240px;font-family:var(--serif);font-size:17px;line-height:1.6}
 .out h3{font-family:var(--sans);font-size:15px;font-weight:600;color:var(--violet);margin:1.4em 0 .4em}
 .out h3:first-child{margin-top:0}
-.out ul,.out ol{margin:0 0 1em;padding-left:1.2em}
+.out ul,.out ol{margin:0;padding-left:1.2em}
 .out li{margin:.3em 0}
 .out p{margin:.4em 0 1em}
 .out blockquote{margin:.6em 0;padding:.1em 0 .1em 14px;border-left:3px solid var(--line);color:#4A4560}
@@ -137,10 +157,9 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
   body{padding:12px}
   .shell{grid-template-columns:1fr}
   .scribe,.notes{min-height:0}
-  .page{max-height:50vh;padding:20px}
+  textarea.page{max-height:50vh;padding:20px}
   .out{max-height:none}
 }
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body data-mode="sermon">
@@ -174,7 +193,12 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
     </div>
     <div class="notice" id="notice" role="alert"></div>
     <div class="ribbon" id="ribbon"></div>
-    <div class="page" id="page" aria-live="polite"></div>
+    
+    <div class="transcript-area">
+      <textarea class="page" id="page" spellcheck="true"></textarea>
+      <div class="interim-preview" id="interimBox"></div>
+    </div>
+
     <div class="actions">
       <button class="btn primary" id="copyBtn" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
@@ -189,6 +213,7 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
         </div>
       </div>
       <button class="btn" id="dlBtn" disabled>Save as .txt</button>
+      <button class="btn" id="sampleBtn">Load sample</button>
       <span class="spacer"></span>
       <button class="btn" id="clearBtn" disabled>Clear</button>
     </div>
@@ -220,8 +245,7 @@ dialog::backdrop{background:rgba(29,25,48,.45)}
           <input type="password" id="key" autocomplete="off" placeholder="Paste your key here">
         </label>
         <label>Model
-          <input type="text" id="model" list="modelList">
-          <datalist id="modelList"></datalist>
+          <select id="model"></select>
         </label>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn sm" id="checkKey" type="button">Check key and list models</button>
@@ -262,7 +286,7 @@ var CUSTOM_INSTRUCTIONS = `Replace this text with your own instructions.
 
 Example: Summarize the transcript below as a one-page brief. Use plain language. List decisions, then open questions. Do not invent names, dates or numbers that are not in the transcript.`;
 
-var SERMON_QUICK = `You are helping with personal Bible study. The text you receive is a raw transcript of a sermon produced by live speech recognition, so it may contain misheard words and missing punctuation. Quietly fix obvious errors.
+var SERMON_QUICK = `You are helping with personal Bible study. The text you receive is a raw transcript of a sermon produced by live speech recognition. Quietly fix obvious errors.
 
 Write study notes in Markdown using exactly these sections:
 ## Main idea
@@ -282,7 +306,7 @@ AUTHORITY, IN ORDER
 4. Theologians and catechisms as valuable but subordinate witnesses: Spurgeon, Calvin, Matthew Henry, Luther, Augustine, Sproul, MacArthur, Owen, Watson, Edwards, the Heidelberg Catechism and the Westminster Standards. Do not manufacture agreement where they differ. Never put tradition in the place of biblical evidence.
 
 HOW THIS TOOL WORKS (important)
-- The transcript came from live browser speech recognition. Correct obvious errors silently. Write "not stated" for any metadata the speaker did not give. Do not guess.
+- The transcript came from live browser speech recognition or pasted text. Correct obvious errors silently. Write "not stated" for any metadata the speaker did not give. Do not guess.
 - Quote Scripture in the World English Bible Updated (WEBU) only if you are confident of the exact wording; otherwise paraphrase and label it (paraphrase). Never silently switch translations.
 - Quote a theologian or catechism only if confident the wording is authentic. Otherwise give a labeled paraphrase.
 - Separate clearly what the preacher taught from your own biblical exposition.
@@ -302,7 +326,7 @@ OUTPUT: Markdown, with these headings in this order:
 ## L. Companion voices
 ## M. Related prayer`;
 
-var MEETING_MINUTES = `You are a meticulous note-taker. The text you receive is a raw transcript of a work meeting produced by live speech recognition. Quietly fix obvious errors.
+var MEETING_MINUTES = `You are a meticulous note-taker. The text you receive is a raw transcript of a work meeting. Quietly fix obvious errors.
 
 Write meeting notes in Markdown using exactly these sections:
 ## Summary
@@ -348,7 +372,7 @@ var MODES = {
   sermon:{
     brand:'Sermon Scribe', sub:'Live transcript and study notes', titlePh:'Name this message',
     ribbonLbl:'Scripture heard', ribbonEmpty:'References appear here as the speaker names them.',
-    start:'Press the microphone when the message begins. Your browser will ask for microphone access the first time.',
+    pagePh:'Press the microphone to record live, or click here to type or paste an existing sermon transcript...',
     notesTitle:'Study notes', notesEmpty:'Notes appear here once you press Summarize. Choose a notes style above, or edit the instructions to suit.',
     fileBase:'sermon', defaultPreset:'sermon-quick', sampleTitle:'Sample message',
     sample:'Good morning. Open your Bible with me to John 3:16. We know this verse so well that we can recite it without feeling it. God so loved the world, not the polished version of the world, but the actual one, with all its noise and brokenness.\n\nNow hold that thought and turn to Romans 8:28. Paul does not say that everything is good. He says that God works in all things for the good of those who love him. That is a promise about direction, not about comfort.\n\nAnd finally, Psalm 23. The valley is real, but notice the shepherd walks through it with you. This week, name one valley you are in and say it out loud to someone you trust.'
@@ -356,7 +380,7 @@ var MODES = {
   meeting:{
     brand:'Meeting Scribe', sub:'Live transcript and meeting notes', titlePh:'Name this meeting',
     ribbonLbl:'Possible actions', ribbonEmpty:'Sentences that sound like tasks or follow-ups appear here.',
-    start:'Press the microphone when the meeting begins. Your browser will ask for microphone access the first time. Place the device near the speaker or use a headset.',
+    pagePh:'Press the microphone to record live, or click here to type or paste meeting minutes / notes...',
     notesTitle:'Meeting notes', notesEmpty:'Notes appear here once you press Summarize. Choose a notes style above, or edit the instructions to suit.',
     fileBase:'meeting', defaultPreset:'meeting-minutes', sampleTitle:'Go-live check-in',
     sample:'Okay, let us get started. Quick update on the go-live: the receiving module passed testing, but we still need to finish the label printer setup. Priya, can you confirm the printer models by Thursday? We decided to keep the original go-live date of the fifteenth.\n\nMarcus will follow up with the carrier about the delayed pallets. One open question is whether night shift gets trained before launch. Let us revisit that next Tuesday. Also, we need to send the updated runbook to the site leads by end of week.'
@@ -366,8 +390,8 @@ var MODES = {
 /* ===================================================================== */
 (function(){
   var $ = function(id){return document.getElementById(id)};
-  var recBtn=$('recBtn'), page=$('page'), scribe=$('scribe');
-  var finalText='', interim='', wantListening=false, recognition=null, lastResultAt=0;
+  var recBtn=$('recBtn'), page=$('page'), scribe=$('scribe'), interimBox=$('interimBox');
+  var interim='', wantListening=false, recognition=null, lastResultAt=0;
   var seconds=0, tick=null, notesMd='', wakeLock=null, mode='sermon', presetId='sermon-quick', running=false, restartT=null;
 
   function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(function(){t.classList.remove('show')},2600)}
@@ -386,7 +410,6 @@ var MODES = {
   function fmt(s){var m=Math.floor(s/60),r=s%60;return m+':'+(r<10?'0':'')+r}
   function setStatus(text,live){$('statusText').textContent=text;$('status').className='pill'+(live?' live':'')}
 
-  function phHTML(){return '<div class="placeholder">'+esc(MODES[mode].start)+'<br><br>Just checking the layout? <button id="sampleBtn">Load a sample</button>.</div>'}
   function fillPresets(){
     var sel=$('preset');sel.innerHTML='';
     Object.keys(PRESETS).forEach(function(id){
@@ -401,19 +424,21 @@ var MODES = {
     document.title=c.brand;
     $('brand').textContent=c.brand;$('sub').textContent=c.sub;
     $('title').placeholder=c.titlePh;$('notesTitle').textContent=c.notesTitle;
+    page.placeholder=c.pagePh;
     $('mSermon').setAttribute('aria-pressed',m==='sermon');$('mMeeting').setAttribute('aria-pressed',m==='meeting');
     var saved=load('ss_preset_'+m);
     presetId=(saved&&PRESETS[saved]&&(PRESETS[saved].mode===m||PRESETS[saved].mode==='any'))?saved:c.defaultPreset;
     fillPresets();
     if(!notesMd)$('out').innerHTML='<div class="placeholder">'+esc(c.notesEmpty)+'</div>';
     store('ss_mode',m);
-    render();
+    updateUI();
   }
   function getInstr(){return load('ss_inst_'+presetId)||PRESETS[presetId].text}
   $('mSermon').addEventListener('click',function(){if(mode!=='sermon')applyMode('sermon')});
   $('mMeeting').addEventListener('click',function(){if(mode!=='meeting')applyMode('meeting')});
   $('preset').addEventListener('change',function(){presetId=$('preset').value;store('ss_preset_'+mode,presetId)});
 
+  /* Scripture & Action detection */
   var books='Genesis|Exodus|Leviticus|Numbers|Deuteronomy|Joshua|Judges|Ruth|1 Samuel|2 Samuel|1 Kings|2 Kings|1 Chronicles|2 Chronicles|Ezra|Nehemiah|Esther|Job|Psalms?|Proverbs|Ecclesiastes|Song of Solomon|Isaiah|Jeremiah|Lamentations|Ezekiel|Daniel|Hosea|Joel|Amos|Obadiah|Jonah|Micah|Nahum|Habakkuk|Zephaniah|Haggai|Zechariah|Malachi|Matthew|Mark|Luke|John|Acts|Romans|1 Corinthians|2 Corinthians|Galatians|Ephesians|Philippians|Colossians|1 Thessalonians|2 Thessalonians|1 Timothy|2 Timothy|Titus|Philemon|Hebrews|James|1 Peter|2 Peter|1 John|2 John|3 John|Jude|Revelation';
   var refRe=new RegExp('\\b(?:'+books+')\\s\\d{1,3}(?:\\s?[:.]\\s?\\d{1,3}(?:\\s?[-–]\\s?\\d{1,3})?)?','gi');
   function findRefs(text){
@@ -433,7 +458,8 @@ var MODES = {
   function renderRibbon(){
     var c=MODES[mode],ribbon=$('ribbon');
     ribbon.innerHTML='<span class="lbl">'+esc(c.ribbonLbl)+'</span>';
-    var items=mode==='sermon'?findRefs(finalText):findActions(finalText);
+    var text=page.value;
+    var items=mode==='sermon'?findRefs(text):findActions(text);
     if(!items.length){ribbon.insertAdjacentHTML('beforeend','<span class="empty">'+esc(c.ribbonEmpty)+'</span>');return}
     items.forEach(function(r){
       var el;
@@ -443,23 +469,25 @@ var MODES = {
     });
   }
 
-  function wordCount(){var t=(finalText+' '+interim).trim();return t?t.split(/\s+/).length:0}
-  function bindSample(){var s=$('sampleBtn');if(s)s.addEventListener('click',function(){finalText=MODES[mode].sample;$('title').value=$('title').value||MODES[mode].sampleTitle;setStatus('Sample loaded',false);render()})}
-  function render(){
-    var has=finalText.trim().length>0;
-    if(!has&&!interim){
-      if(wantListening){page.innerHTML='<div class="placeholder">Listening… speak clearly into the microphone.</div>'}
-      else{page.innerHTML=phHTML();bindSample()}
-    }else{
-      var paras=finalText.split(/\n\n/).filter(Boolean).map(function(p){return '<p>'+esc(p)+'</p>'});
-      if(interim)paras.push('<p><span class="interim">'+esc(interim)+'</span></p>');
-      page.innerHTML=paras.join('');page.scrollTop=page.scrollHeight;
-    }
-    $('words').textContent=wordCount()+' words';
+  function updateUI(){
+    var val=page.value.trim();
+    var has=val.length>0;
+    var words=val?val.split(/\s+/).length:0;
+    $('words').textContent=words+' words';
     ['copyBtn','aiBtn','dlBtn','clearBtn','sumBtn'].forEach(function(id){$(id).disabled=!has});
     renderRibbon();
   }
+  page.addEventListener('input',updateUI);
 
+  /* Sample message button */
+  $('sampleBtn').addEventListener('click',function(){
+    page.value=MODES[mode].sample;
+    $('title').value=$('title').value||MODES[mode].sampleTitle;
+    setStatus('Sample loaded',false);
+    updateUI();
+  });
+
+  /* Speech recognition */
   var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   function showNotice(msg){var n=$('notice');n.textContent=msg;n.classList.add('show')}
   function hideNotice(){$('notice').classList.remove('show')}
@@ -476,7 +504,10 @@ var MODES = {
   function stopUI(){
     recBtn.classList.remove('on');recBtn.setAttribute('aria-label','Start listening');
     scribe.classList.remove('on-air');$('meta').classList.remove('on-air');
-    dropLock();clearInterval(tick);interim='';setStatus(finalText?'Paused':'Ready',false);render();
+    dropLock();clearInterval(tick);interim='';
+    interimBox.style.display='none';
+    setStatus(page.value.trim()?'Paused':'Ready',false);
+    updateUI();
   }
 
   if(!SR){showNotice('Speech recognition requires desktop Chrome, Edge, or Safari.');recBtn.disabled=true}
@@ -487,11 +518,25 @@ var MODES = {
       for(var i=e.resultIndex;i<e.results.length;i++){
         var r=e.results[i];
         if(r.isFinal){
-          var now=Date.now(),gap=lastResultAt&&(now-lastResultAt)>4000,chunk=r[0].transcript.trim();
-          finalText+=(finalText?(gap?'\n\n':' '):'')+chunk;lastResultAt=now;
+          var chunk=r[0].transcript.trim();
+          if(chunk){
+            var now=Date.now(),gap=lastResultAt&&(now-lastResultAt>4000);
+            var currentText=page.value;
+            var sep=currentText?(gap?'\n\n':' '):'';
+            page.value=currentText+sep+chunk;
+            lastResultAt=now;
+            page.scrollTop=page.scrollHeight;
+            updateUI();
+          }
         }else{tmp+=r[0].transcript}
       }
-      interim=tmp;render();
+      interim=tmp;
+      if(interim){
+        interimBox.textContent='... '+interim;
+        interimBox.style.display='block';
+      }else{
+        interimBox.style.display='none';
+      }
     };
     recognition.onerror=function(e){
       if(e.error==='not-allowed'||e.error==='service-not-allowed'){wantListening=false;showNotice('Microphone access blocked. Click the lock icon in the address bar, allow mic, then try again.');stopUI()}
@@ -523,25 +568,27 @@ var MODES = {
       setTimeout(function(){if(running){try{recognition.abort()}catch(e){}}},800);
       return;
     }
-    hideNotice();wantListening=true;startUI();if(!finalText)render();
+    hideNotice();wantListening=true;startUI();
     if(running){try{recognition.abort()}catch(e){}scheduleRestart(400)}else{scheduleRestart(0)}
   });
 
-  $('copyBtn').addEventListener('click',function(){copy(finalText).then(function(){toast('Transcript copied')},function(){toast('Copy failed')})});
+  $('copyBtn').addEventListener('click',function(){copy(page.value).then(function(){toast('Transcript copied')},function(){toast('Copy failed')})});
   $('clearBtn').addEventListener('click',function(){
     if(!confirm('Clear the transcript and notes?'))return;
-    finalText='';interim='';seconds=0;lastResultAt=0;$('timer').textContent='0:00';notesMd='';
+    page.value='';interim='';seconds=0;lastResultAt=0;$('timer').textContent='0:00';notesMd='';
+    interimBox.style.display='none';
     $('out').innerHTML='<div class="placeholder">'+esc(MODES[mode].notesEmpty)+'</div>';
-    $('copyNotes').disabled=true;setStatus(wantListening?'Listening live':'Ready',wantListening);render();
+    $('copyNotes').disabled=true;setStatus(wantListening?'Listening live':'Ready',wantListening);
+    updateUI();
   });
   $('dlBtn').addEventListener('click',function(){
     var t=($('title').value||MODES[mode].fileBase).replace(/[^\w\- ]+/g,'').trim()||MODES[mode].fileBase;
-    var b=new Blob([finalText],{type:'text/plain'}),a=document.createElement('a');
+    var b=new Blob([page.value],{type:'text/plain'}),a=document.createElement('a');
     a.href=URL.createObjectURL(b);a.download=t+'.txt';document.body.appendChild(a);a.click();document.body.removeChild(a);
   });
   $('wideBtn').addEventListener('click',function(){var w=$('shell').classList.toggle('wide');$('wideBtn').textContent=w?'Show transcript':'Focus notes'});
 
-  function userMessage(){var t=$('title').value;return (t?'Title: '+t+'\n\n':'')+'Transcript:\n'+finalText}
+  function userMessage(){var t=$('title').value;return (t?'Title: '+t+'\n\n':'')+'Transcript:\n'+page.value}
   function combinedPrompt(){return getInstr()+'\n\n'+userMessage()}
 
   var menu=$('aiMenu'),aiBtn=$('aiBtn');
@@ -577,22 +624,41 @@ var MODES = {
   $('dlgX').addEventListener('click',function(){dlg.close()});
 
   var defaults={
-    gemini:{model:'gemini-2.0-flash',hint:'Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> (no credit card required).'},
-    groq:{model:'llama-3.3-70b-versatile',hint:'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.'}
+    gemini:{
+      models:['gemini-3.8-flash','gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'],
+      hint:'Get your free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.'
+    },
+    groq:{
+      models:['llama-3.3-70b-versatile','llama-3.1-8b-instant'],
+      hint:'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.'
+    }
   };
+
+  function populateModelDropdown(list, selectedVal){
+    var sel=$('model');sel.innerHTML='';
+    list.forEach(function(m){
+      var opt=document.createElement('option');opt.value=m;opt.textContent=m;sel.appendChild(opt);
+    });
+    if(selectedVal&&list.indexOf(selectedVal)>-1){sel.value=selectedVal}
+    else if(list.length){sel.value=list[0]}
+  }
 
   function applyProvider(){
     var p=$('prov').value;
-    $('model').value=load('ss_model_'+p)||defaults[p].model;
+    var savedModel=load('ss_model_'+p);
+    var modelList=defaults[p].models.slice();
+    if(savedModel&&modelList.indexOf(savedModel)===-1)modelList.unshift(savedModel);
+
+    populateModelDropdown(modelList,savedModel||defaults[p].models[0]);
     $('hint').innerHTML=defaults[p].hint;
     $('key').value=load('ss_key_'+p)||'';
     $('remember').checked=!!load('ss_key_'+p);
-    $('checkOut').textContent='';$('modelList').innerHTML='';
+    $('checkOut').textContent='';
   }
   $('prov').value=load('ss_prov')||'gemini';
   applyProvider();
   $('prov').addEventListener('change',function(){store('ss_prov',$('prov').value);applyProvider()});
-  $('model').addEventListener('change',function(){store('ss_model_'+$('prov').value,$('model').value.trim())});
+  $('model').addEventListener('change',function(){store('ss_model_'+$('prov').value,$('model').value)});
 
   function friendly(status,msg){
     msg=msg||('Request failed ('+status+')');
@@ -619,9 +685,10 @@ var MODES = {
         if(!g.ok)throw new Error(friendly(g.status,gd.error&&gd.error.message));
         names=(gd.data||[]).map(function(m){return m.id}).filter(function(n){return !/whisper|guard|tts|playai/i.test(n)});
       }
-      $('modelList').innerHTML=names.map(function(n){return '<option value="'+esc(n)+'">'}).join('');
+      populateModelDropdown(names,$('model').value);
+      store('ss_model_'+p,$('model').value);
       out.className='result';
-      out.innerHTML='<b>Key verified.</b> '+names.length+' text models available. Click Model to select.';
+      out.innerHTML='<b>Key verified.</b> '+names.length+' text models available in dropdown.';
     }catch(e){out.className='result bad';out.textContent=e.message||'Could not reach the service.'}
   });
 
@@ -646,7 +713,7 @@ var MODES = {
     var sys=getInstr(),user=userMessage();
 
     if(p==='gemini'){
-      var tryList=[model,'gemini-2.5-flash','gemini-2.0-flash','gemini-1.5-flash'];
+      var tryList=[model,'gemini-3.8-flash','gemini-2.5-flash','gemini-2.0-flash'];
       var uniqueModels=tryList.filter(function(v,i,a){return v&&a.indexOf(v)===i});
       var lastErr='Model request failed';
       for(var i=0;i<uniqueModels.length;i++){
@@ -690,7 +757,7 @@ var MODES = {
   });
   $('copyNotes').addEventListener('click',function(){copy(notesMd).then(function(){toast('Notes copied')},function(){toast('Copy failed')})});
 
-  window.addEventListener('beforeunload',function(e){if(finalText.length>40){e.preventDefault();e.returnValue=''}});
+  window.addEventListener('beforeunload',function(e){if(page.value.length>40){e.preventDefault();e.returnValue=''}});
 
   var qs=(location.search.match(/[?&]mode=(\w+)/)||[])[1];
   applyMode(MODES[qs]?qs:(MODES[load('ss_mode')]?load('ss_mode'):'sermon'));
