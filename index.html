@@ -31,8 +31,6 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);margin:0;padd
 .body{padding:24px;display:grid;gap:16px}
 .target-info{background:#F3F1FA;border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-size:13px;color:var(--muted);display:grid;gap:6px}
 .target-info b{color:var(--ink)}
-.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.row input[type=text]{padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:monospace;flex:1;min-width:240px;background:#fff}
 label{font-weight:600;font-size:14px;display:block}
 textarea{width:100%;min-height:160px;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:var(--serif);font-size:17px;line-height:1.6;resize:vertical;background:#fff}
 textarea:focus{outline:2px solid var(--violet)}
@@ -58,10 +56,7 @@ textarea:focus{outline:2px solid var(--violet)}
 
   <div class="body">
     <div class="target-info">
-      <div class="row">
-        <b>Target RMR Login Email:</b>
-        <input type="text" id="rmrEmailInput" value="RobertRobinson@rmr1971.onmicrosoft.com" title="Edit this if your exact RMR login email is different">
-      </div>
+      <div><b>Client ID:</b> bc4efc91-8b56-4f59-bf0e-f42e4724e2f6 (Corrected)</div>
       <div><b>Tenant ID:</b> daa6322e-b4e5-415c-8cc7-258c866f29d7 (RMR)</div>
       <div><b>Target Site:</b> https://rmr1971.sharepoint.com/sites/Bible_App</div>
       <div><b>Target List:</b> Resources (Item ID: <b>17</b>)</div>
@@ -82,18 +77,18 @@ textarea:focus{outline:2px solid var(--violet)}
     </div>
 
     <div class="console-title">Live Activity Log</div>
-    <div class="console-box" id="logBox">Ready. Click "Sign in with Microsoft" to authenticate with your RMR tenant.</div>
+    <div class="console-box" id="logBox">Ready. Click "Sign in with Microsoft" to authenticate.</div>
   </div>
 </div>
 
 <script>
 /* =====================================================================
-   CONFIGURATION
+   CONFIGURATION (CORRECTED CLIENT ID)
    ===================================================================== */
 var MSAL_CONFIG = {
   auth: {
-    clientId: "bc4efc91-8b56-4f59-bf0e-f42e47242ef6", // Sermon Scribe Client ID
-    authority: "https://login.microsoftonline.com/daa6322e-b4e5-415c-8cc7-258c866f29d7", // <-- YOUR EXACT RMR TENANT ID
+    clientId: "bc4efc91-8b56-4f59-bf0e-f42e4724e2f6", // <-- EXACT MATCH FROM YOUR PORTAL (e2f6)
+    authority: "https://login.microsoftonline.com/daa6322e-b4e5-415c-8cc7-258c866f29d7",
     redirectUri: "https://iamrob1971-ops.github.io/Scribe/"
   },
   cache: {
@@ -111,6 +106,7 @@ var TARGET_FIELD = "Body_Enrichment";
 
 var msalApp = new msal.PublicClientApplication(MSAL_CONFIG);
 var cachedSiteId = null;
+var isAuthenticating = false;
 
 function log(msg){
   var box = document.getElementById("logBox");
@@ -119,43 +115,56 @@ function log(msg){
 }
 
 /* =====================================================================
-   AUTHENTICATION (Forces Account Picker & Login Hint)
+   AUTHENTICATION
    ===================================================================== */
 async function getToken(){
-  var accounts = msalApp.getAllAccounts();
-  var rmrTargetEmail = document.getElementById("rmrEmailInput").value.trim();
+  if (isAuthenticating) {
+    throw new Error("Authentication is already in progress. Please complete the open popup.");
+  }
 
-  // Find existing cached RMR account if already signed in
-  var activeAccount = accounts.find(function(a){ 
+  var accounts = msalApp.getAllAccounts();
+  var rmrAccount = accounts.find(function(a){ 
     return a.username && a.username.toLowerCase().includes("rmr"); 
   }) || accounts[0];
 
-  if (!activeAccount) {
-    log("Prompting sign-in for: " + rmrTargetEmail + "...");
-    var loginRes = await msalApp.loginPopup({ 
-      scopes: GRAPH_SCOPES,
-      prompt: "select_account",
-      loginHint: rmrTargetEmail // Tells Microsoft to ignore Kenco and target RMR
-    });
-    updateUserUI(loginRes.account);
-    return loginRes.accessToken;
+  if (!rmrAccount) {
+    isAuthenticating = true;
+    try {
+      log("Opening sign-in popup...");
+      var loginRes = await msalApp.loginPopup({ 
+        scopes: GRAPH_SCOPES,
+        prompt: "select_account"
+      });
+      updateUserUI(loginRes.account);
+      isAuthenticating = false;
+      return loginRes.accessToken;
+    } catch(err) {
+      isAuthenticating = false;
+      throw err;
+    }
   }
 
   try {
     var silentRes = await msalApp.acquireTokenSilent({
       scopes: GRAPH_SCOPES,
-      account: activeAccount
+      account: rmrAccount
     });
     return silentRes.accessToken;
   } catch (err) {
-    log("Silent token expired. Prompting account picker...");
-    var popRes = await msalApp.loginPopup({ 
-      scopes: GRAPH_SCOPES,
-      prompt: "select_account",
-      loginHint: rmrTargetEmail
-    });
-    updateUserUI(popRes.account);
-    return popRes.accessToken;
+    isAuthenticating = true;
+    try {
+      log("Refreshing token via popup...");
+      var popRes = await msalApp.loginPopup({ 
+        scopes: GRAPH_SCOPES,
+        prompt: "select_account"
+      });
+      updateUserUI(popRes.account);
+      isAuthenticating = false;
+      return popRes.accessToken;
+    } catch(err2) {
+      isAuthenticating = false;
+      throw err2;
+    }
   }
 }
 
@@ -185,10 +194,14 @@ function updateUserUI(account){
 }
 
 document.getElementById("loginBtn").addEventListener("click", async function(){
+  var btn = document.getElementById("loginBtn");
+  btn.disabled = true;
   try {
     await getToken();
   } catch(e) {
-    log("Sign in failed: " + e.message);
+    log("Sign in issue: " + e.message);
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -200,7 +213,7 @@ document.getElementById("logoutBtn").addEventListener("click", function(){
 });
 
 /* =====================================================================
-   MICROSOFT GRAPH API CALLS
+   MICROSOFT GRAPH CALLS
    ===================================================================== */
 async function getSiteId(token){
   if(cachedSiteId) return cachedSiteId;
@@ -214,7 +227,7 @@ async function getSiteId(token){
   return cachedSiteId;
 }
 
-// 1. Read Current Value from SharePoint
+// 1. Read Current Value
 document.getElementById("readBtn").addEventListener("click", async function(){
   var btn = document.getElementById("readBtn");
   btn.disabled = true;
@@ -229,18 +242,18 @@ document.getElementById("readBtn").addEventListener("click", async function(){
     if(!res.ok) throw new Error(data.error && data.error.message || "Failed to read item " + res.status);
     
     var fields = data.fields || {};
-    // Match column name case-insensitively
     var actualKey = Object.keys(fields).find(function(k){ return k.toLowerCase() === TARGET_FIELD.toLowerCase(); }) || TARGET_FIELD;
     var currentContent = fields[actualKey] || "(Column is currently empty)";
     
     log("CURRENT " + actualKey + " VALUE:\n-------------------------------------\n" + currentContent + "\n-------------------------------------");
   } catch(e) {
     log("ERROR reading: " + e.message);
+  } finally {
+    btn.disabled = false;
   }
-  btn.disabled = false;
 });
 
-// 2. Append & Update Value in SharePoint
+// 2. Append & Update Value
 document.getElementById("appendBtn").addEventListener("click", async function(){
   var text = document.getElementById("textToAppend").value.trim();
   if(!text){
@@ -265,7 +278,6 @@ document.getElementById("appendBtn").addEventListener("click", async function(){
     var actualKey = Object.keys(fields).find(function(k){ return k.toLowerCase() === TARGET_FIELD.toLowerCase(); }) || TARGET_FIELD;
     var currentText = fields[actualKey] || "";
 
-    // Build the appended content
     var timestamp = document.getElementById("addTimestamp").checked ? ("\n\n--- Appended " + new Date().toLocaleString() + " ---\n") : "\n\n";
     var updatedPayload = currentText ? (currentText + timestamp + text) : text;
 
@@ -286,12 +298,13 @@ document.getElementById("appendBtn").addEventListener("click", async function(){
     var patchData = await patchRes.json();
     if(!patchRes.ok) throw new Error(patchData.error && patchData.error.message || "Patch failed (" + patchRes.status + ")");
 
-    log("SUCCESS! SharePoint Item 17 (" + actualKey + ") updated successfully.");
+    log("🎉 SUCCESS! SharePoint Item 17 (" + actualKey + ") updated successfully.");
     document.getElementById("textToAppend").value = "";
   } catch(e) {
     log("ERROR updating: " + e.message);
+  } finally {
+    btn.disabled = false;
   }
-  btn.disabled = false;
 });
 
 // Check if an RMR account is already authenticated on load
