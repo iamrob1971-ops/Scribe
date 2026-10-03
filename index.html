@@ -18,7 +18,7 @@
 }
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--sans);margin:0;padding:24px;font-size:15px;line-height:1.5}
-.card{max-width:860px;margin:0 auto;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(29,25,48,.06)}
+.card{max-width:880px;margin:0 auto;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(29,25,48,.06)}
 .header{padding:20px 24px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
 .header h1{margin:0;font-family:var(--serif);font-size:22px;font-weight:500}
 .auth-box{display:flex;align-items:center;gap:10px}
@@ -29,13 +29,15 @@ body{background:var(--bg);color:var(--ink);font-family:var(--sans);margin:0;padd
 .btn.primary:hover{background:var(--violet-d)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .body{padding:24px;display:grid;gap:16px}
-.target-info{background:#F3F1FA;border:1px solid var(--line);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--muted);display:grid;gap:4px}
+.target-info{background:#F3F1FA;border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-size:13px;color:var(--muted);display:grid;gap:6px}
 .target-info b{color:var(--ink)}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.row input[type=text]{padding:6px 10px;border:1px solid var(--line);border-radius:6px;font-size:13px;font-family:monospace;flex:1;min-width:240px;background:#fff}
 label{font-weight:600;font-size:14px;display:block}
 textarea{width:100%;min-height:160px;border:1px solid var(--line);border-radius:8px;padding:12px;font-family:var(--serif);font-size:17px;line-height:1.6;resize:vertical;background:#fff}
 textarea:focus{outline:2px solid var(--violet)}
 .btn-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.console-box{background:#1D1930;color:#F0EEF8;border-radius:8px;padding:14px 16px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;max-height:220px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
+.console-box{background:#1D1930;color:#F0EEF8;border-radius:8px;padding:14px 16px;font-family:Consolas,monospace;font-size:13px;line-height:1.5;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
 .console-title{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:-10px;text-transform:uppercase;letter-spacing:0.04em}
 </style>
 </head>
@@ -56,7 +58,11 @@ textarea:focus{outline:2px solid var(--violet)}
 
   <div class="body">
     <div class="target-info">
-      <div><b>Tenant:</b> RMR (Personal Business)</div>
+      <div class="row">
+        <b>Target RMR Login Email:</b>
+        <input type="text" id="rmrEmailInput" value="RobertRobinson@rmr1971.onmicrosoft.com" title="Edit this if your exact RMR login email is different">
+      </div>
+      <div><b>Tenant ID:</b> daa6322e-b4e5-415c-8cc7-258c866f29d7 (RMR)</div>
       <div><b>Target Site:</b> https://rmr1971.sharepoint.com/sites/Bible_App</div>
       <div><b>Target List:</b> Resources (Item ID: <b>17</b>)</div>
       <div><b>Target Column:</b> <b>Body_Enrichment</b> (Append Mode)</div>
@@ -64,7 +70,7 @@ textarea:focus{outline:2px solid var(--violet)}
 
     <div>
       <label for="textToAppend">Text to Append to Item 17:</label>
-      <textarea id="textToAppend" placeholder="Type or paste text here that you want appended to Item 17's Body_Enrichment column..."></textarea>
+      <textarea id="textToAppend" placeholder="Type or paste any test text here that you want appended to Item 17's Body_Enrichment column in SharePoint..."></textarea>
     </div>
 
     <div class="btn-row">
@@ -76,7 +82,7 @@ textarea:focus{outline:2px solid var(--violet)}
     </div>
 
     <div class="console-title">Live Activity Log</div>
-    <div class="console-box" id="logBox">Awaiting action. Click "Sign in with Microsoft" to begin.</div>
+    <div class="console-box" id="logBox">Ready. Click "Sign in with Microsoft" to authenticate with your RMR tenant.</div>
   </div>
 </div>
 
@@ -86,8 +92,8 @@ textarea:focus{outline:2px solid var(--violet)}
    ===================================================================== */
 var MSAL_CONFIG = {
   auth: {
-    clientId: "bc4efc91-8b56-4f59-bf0e-f42e47242ef6", // Your Application (Client) ID
-    authority: "https://login.microsoftonline.com/daa6322e-b4e5-415c-8cc7-258c866f29d7", // Your Tenant ID
+    clientId: "bc4efc91-8b56-4f59-bf0e-f42e47242ef6", // Sermon Scribe Client ID
+    authority: "https://login.microsoftonline.com/organizations", // Dynamic organization lookup
     redirectUri: "https://iamrob1971-ops.github.io/Scribe/"
   },
   cache: {
@@ -113,25 +119,42 @@ function log(msg){
 }
 
 /* =====================================================================
-   AUTHENTICATION
+   AUTHENTICATION (Forces Account Picker & Login Hint)
    ===================================================================== */
 async function getToken(){
   var accounts = msalApp.getAllAccounts();
-  if (accounts.length === 0) {
-    log("No active account. Prompting sign in popup...");
-    var loginRes = await msalApp.loginPopup({ scopes: GRAPH_SCOPES });
+  var rmrTargetEmail = document.getElementById("rmrEmailInput").value.trim();
+
+  // Find existing cached RMR account if already signed in
+  var activeAccount = accounts.find(function(a){ 
+    return a.username && a.username.toLowerCase().includes("rmr"); 
+  }) || accounts[0];
+
+  if (!activeAccount) {
+    log("Prompting sign-in for: " + rmrTargetEmail + "...");
+    var loginRes = await msalApp.loginPopup({ 
+      scopes: GRAPH_SCOPES,
+      prompt: "select_account",
+      loginHint: rmrTargetEmail // Tells Microsoft to ignore Kenco and target RMR
+    });
     updateUserUI(loginRes.account);
     return loginRes.accessToken;
   }
+
   try {
     var silentRes = await msalApp.acquireTokenSilent({
       scopes: GRAPH_SCOPES,
-      account: accounts[0]
+      account: activeAccount
     });
     return silentRes.accessToken;
   } catch (err) {
-    log("Silent token expired. Opening popup...");
-    var popRes = await msalApp.loginPopup({ scopes: GRAPH_SCOPES });
+    log("Silent token expired. Prompting account picker...");
+    var popRes = await msalApp.loginPopup({ 
+      scopes: GRAPH_SCOPES,
+      prompt: "select_account",
+      loginHint: rmrTargetEmail
+    });
+    updateUserUI(popRes.account);
     return popRes.accessToken;
   }
 }
@@ -151,7 +174,7 @@ function updateUserUI(account){
     logoutBtn.style.display = "inline-flex";
     appendBtn.disabled = false;
     readBtn.disabled = false;
-    log("Signed in as: " + (account.username || account.name));
+    log("Signed in successfully as: " + (account.username || account.name));
   } else {
     userPill.style.display = "none";
     loginBtn.style.display = "inline-flex";
@@ -177,7 +200,7 @@ document.getElementById("logoutBtn").addEventListener("click", function(){
 });
 
 /* =====================================================================
-   MICROSOFT GRAPH CALLS
+   MICROSOFT GRAPH API CALLS
    ===================================================================== */
 async function getSiteId(token){
   if(cachedSiteId) return cachedSiteId;
@@ -191,14 +214,14 @@ async function getSiteId(token){
   return cachedSiteId;
 }
 
-// 1. Read Current Value
+// 1. Read Current Value from SharePoint
 document.getElementById("readBtn").addEventListener("click", async function(){
   var btn = document.getElementById("readBtn");
   btn.disabled = true;
   try {
     var token = await getToken();
     var siteId = await getSiteId(token);
-    log("Fetching current Item " + TARGET_ITEM_ID + " fields...");
+    log("Fetching current Item " + TARGET_ITEM_ID + " from list '" + LIST_NAME + "'...");
     
     var url = "https://graph.microsoft.com/v1.0/sites/" + siteId + "/lists/" + LIST_NAME + "/items/" + TARGET_ITEM_ID + "?expand=fields";
     var res = await fetch(url, { headers: { "Authorization": "Bearer " + token } });
@@ -206,22 +229,22 @@ document.getElementById("readBtn").addEventListener("click", async function(){
     if(!res.ok) throw new Error(data.error && data.error.message || "Failed to read item " + res.status);
     
     var fields = data.fields || {};
-    // Smart case-insensitive match for Body_Enrichment
+    // Match column name case-insensitively
     var actualKey = Object.keys(fields).find(function(k){ return k.toLowerCase() === TARGET_FIELD.toLowerCase(); }) || TARGET_FIELD;
-    var currentContent = fields[actualKey] || "(Column is currently blank or empty)";
+    var currentContent = fields[actualKey] || "(Column is currently empty)";
     
-    log("SUCCESS! Current " + actualKey + " content is:\n-------------------------------------\n" + currentContent + "\n-------------------------------------");
+    log("CURRENT " + actualKey + " VALUE:\n-------------------------------------\n" + currentContent + "\n-------------------------------------");
   } catch(e) {
     log("ERROR reading: " + e.message);
   }
   btn.disabled = false;
 });
 
-// 2. Append & Update Value
+// 2. Append & Update Value in SharePoint
 document.getElementById("appendBtn").addEventListener("click", async function(){
   var text = document.getElementById("textToAppend").value.trim();
   if(!text){
-    alert("Type or paste some text first!");
+    alert("Please type or paste some text into the box first!");
     return;
   }
 
@@ -232,8 +255,7 @@ document.getElementById("appendBtn").addEventListener("click", async function(){
     var token = await getToken();
     var siteId = await getSiteId(token);
     
-    // Step A: Read existing content so we can append
-    log("Reading existing text to perform append...");
+    log("Reading existing content from Item " + TARGET_ITEM_ID + "...");
     var getUrl = "https://graph.microsoft.com/v1.0/sites/" + siteId + "/lists/" + LIST_NAME + "/items/" + TARGET_ITEM_ID + "?expand=fields";
     var getRes = await fetch(getUrl, { headers: { "Authorization": "Bearer " + token } });
     var getData = await getRes.json();
@@ -243,11 +265,10 @@ document.getElementById("appendBtn").addEventListener("click", async function(){
     var actualKey = Object.keys(fields).find(function(k){ return k.toLowerCase() === TARGET_FIELD.toLowerCase(); }) || TARGET_FIELD;
     var currentText = fields[actualKey] || "";
 
-    // Step B: Build new text
+    // Build the appended content
     var timestamp = document.getElementById("addTimestamp").checked ? ("\n\n--- Appended " + new Date().toLocaleString() + " ---\n") : "\n\n";
     var updatedPayload = currentText ? (currentText + timestamp + text) : text;
 
-    // Step C: PATCH update
     log("Sending PATCH request to update " + actualKey + "...");
     var patchUrl = "https://graph.microsoft.com/v1.0/sites/" + siteId + "/lists/" + LIST_NAME + "/items/" + TARGET_ITEM_ID + "/fields";
     var patchBody = {};
@@ -265,18 +286,19 @@ document.getElementById("appendBtn").addEventListener("click", async function(){
     var patchData = await patchRes.json();
     if(!patchRes.ok) throw new Error(patchData.error && patchData.error.message || "Patch failed (" + patchRes.status + ")");
 
-    log("🎉 SUCCESS! SharePoint Item 17 was updated successfully.");
+    log("SUCCESS! SharePoint Item 17 (" + actualKey + ") updated successfully.");
     document.getElementById("textToAppend").value = "";
   } catch(e) {
-    log("❌ ERROR updating: " + e.message);
+    log("ERROR updating: " + e.message);
   }
   btn.disabled = false;
 });
 
-// Auto check existing login on load
+// Check if an RMR account is already authenticated on load
 var existingAccounts = msalApp.getAllAccounts();
-if(existingAccounts.length > 0){
-  updateUserUI(existingAccounts[0]);
+var existingRmr = existingAccounts.find(function(a){ return a.username && a.username.toLowerCase().includes("rmr"); });
+if(existingRmr){
+  updateUserUI(existingRmr);
 }
 </script>
 </body>
